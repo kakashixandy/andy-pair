@@ -1,392 +1,1135 @@
-require('./patch-baileys');
-require('./settings')
-const { Boom } = require('@hapi/boom')
-const fs = require('fs')
-const chalk = require('chalk')
-const FileType = require('file-type')
-const path = require('path')
-const axios = require('axios')
-const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
-const PhoneNumber = require('awesome-phonenumber')
-const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('./lib/exif')
-const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetch, await, sleep, reSize } = require('./lib/myfunc')
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    generateForwardMessageContent,
-    prepareWAMessageMedia,
-    generateWAMessageFromContent,
-    generateMessageID,
-    downloadContentFromMessage,
-    jidDecode,
-    proto,
-    jidNormalizedUser,
-    makeCacheableSignalKeyStore,
-    delay
-} = require("@whiskeysockets/baileys")
-const NodeCache = require("node-cache")
-// Using a lightweight persisted store instead of makeInMemoryStore (compat across versions)
-const pino = require("pino")
-const readline = require("readline")
-const { parsePhoneNumber } = require("libphonenumber-js")
-const { PHONENUMBER_MCC } = require('@whiskeysockets/baileys/lib/Utils/generics')
-const { rmSync, existsSync } = require('fs')
-const { join } = require('path')
 
-// Import lightweight store
-const store = require('./lib/lightweight_store')
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Andy-Bots | Andy-Tech</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap"
+        rel="stylesheet">
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+/* ---------- 1. BASE ---------- */
+:root {
+  --bg: #e9edf2;          /* page + panel colour */
+  --card-inner: #ffffff;  /* small cards inside panels */
+  --text: #0f172a;        /* main text */
+  --muted: #64748b;       /* secondary text */
+  --accent: #22c55e;      /* green */
+  --border: #d5dbe5;
+  --light: #ffffff;       /* light shadow (top-left) */
+  --dark: #c5ccd8;        /* dark shadow (bottom-right) */
+}
 
-// Initialize store
-store.readFromFile()
-const settings = require('./settings')
-setInterval(() => store.writeToFile(), settings.storeWriteInterval || 10000)
+body.dark {
+  --bg: #171b22;
+  --card-inner: #222834;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --border: #2f3846;
+  --light: #232a35;
+  --dark: #0b0e13;
+}
 
-// Memory optimization - Force garbage collection if available
-setInterval(() => {
-    if (global.gc) {
-        global.gc()
-        console.log('🧹 Garbage collection completed')
-    }
-}, 60_000) // every 1 minute
+* { box-sizing: border-box; }
 
-// Memory monitoring - Restart if RAM gets too high
-setInterval(() => {
-    const used = process.memoryUsage().rss / 1024 / 1024
-    if (used > 400) {
-        console.log('⚠️ RAM too high (>400MB), restarting bot...')
-        process.exit(1) // Panel will auto-restart
-    }
-}, 30_000) // check every 30 seconds
+html { scroll-behavior: smooth; }
 
-let phoneNumber = "256701583113"
-let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.4;
+}
 
-global.botname = "𝐀𝐍𝐃𝐘-𝐗𝐌𝐃"
-global.themeemoji = "•"
-const pairingCode = !!phoneNumber || process.argv.includes("--pairing-code")
-const useMobile = process.argv.includes("--mobile")
+img { max-width: 100%; display: block; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; border: none; background: none; cursor: pointer; }
 
-// Only create readline interface if we're in an interactive environment
-const rl = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout }) : null
-const question = (text) => {
-    if (rl) {
-        return new Promise((resolve) => rl.question(text, resolve))
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ---------- 2. REUSABLE PIECES ---------- */
+.card {
+  background: var(--bg);
+  border-radius: 20px;
+  padding: 18px 16px;
+  margin-bottom: 20px;
+  text-align: center;
+  box-shadow: 8px 8px 16px var(--dark), -8px -8px 16px var(--light);
+}
+
+.section-title {
+  margin: 0 0 14px;
+  font-size: 1.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card-inner);
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 4px 10px var(--dark); }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 800;
+}
+
+.icon-circle {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--muted);
+  box-shadow: inset 2px 2px 5px var(--dark), inset -2px -2px 5px var(--light);
+}
+
+.muted { color: var(--muted); font-size: 0.85rem; }
+
+/* ---------- 3. TITLE + TOP BAR ---------- */
+.page-title {
+  text-align: center;
+  font-size: 1.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin: 12px 16px;
+}
+
+.topbar {
+  position: sticky;
+  top: 8px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - 32px);
+  max-width: 688px;
+  margin: 0 auto 16px;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: 4px 4px 10px var(--dark), -4px -4px 10px var(--light);
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+}
+
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+
+.theme-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--dark);
+}
+.knob {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.knob.active {
+  background: var(--card-inner);
+  color: #f59e0b;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+}
+
+/* ---------- 4. SIDE MENU ---------- */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 75%;
+  max-width: 300px;
+  padding: 16px;
+  background: var(--bg);
+  box-shadow: 6px 0 20px rgba(0, 0, 0, 0.25);
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 1000;
+}
+.sidebar.open { transform: translateX(0); }
+
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 900;
+}
+.overlay.open { opacity: 1; pointer-events: auto; }
+
+.menu { list-style: none; margin: 16px 0 0; padding: 0; }
+.menu a,
+.menu button {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  font-size: 1rem;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.menu a:hover,
+.menu a:active,
+.menu button:hover,
+.menu button:active { background: var(--card-inner); }
+.menu-divider { height: 1px; margin: 8px 12px; background: var(--border); }
+.menu i { width: 22px; text-align: center; color: var(--accent); }
+
+body.menu-open,
+body.modal-open { overflow: hidden; }
+
+section[id] { scroll-margin-top: 90px; }
+
+/* ---------- 5. BOTS ---------- */
+.bot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.bot-card {
+  position: relative;
+  background: var(--card-inner);
+  border-radius: 16px;
+  padding: 32px 10px 12px;
+  box-shadow: 4px 4px 10px var(--dark);
+}
+
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.badge::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.bot-card h3 {
+  margin: 0 0 10px;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+.bot-card h3::after {
+  content: "";
+  display: block;
+  width: 30px;
+  height: 2px;
+  margin: 6px auto 0;
+  background: var(--border);
+}
+
+.bot-card img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.btn-stack { display: flex; flex-direction: column; gap: 6px; }
+.btn-stack .btn { width: 100%; min-height: 34px; }
+
+/* ---------- 6. STATS ---------- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.stat-card {
+  background: var(--card-inner);
+  border-radius: 14px;
+  padding: 14px 6px;
+  box-shadow: 4px 4px 10px var(--dark);
+}
+.stat-card .icon-circle { margin: 0 auto; }
+
+.stat-label {
+  margin: 8px 0 2px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.stat-number {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+/* ---------- 7. FEATURES + HOW IT WORKS ---------- */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.two-col .card { margin-bottom: 0; padding: 16px 12px; }
+.two-col .section-title { font-size: 1.25rem; }
+
+.feature-list,
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.feature-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.feature-list i { color: var(--accent); font-size: 1.25rem; }
+
+.steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.steps .icon-circle { width: 40px; height: 40px; }
+.steps strong { font-size: 0.95rem; }
+.steps p { margin: 2px 0 0; font-size: 0.78rem; color: var(--muted); }
+
+/* ---------- 8. GET YOUR BOT (phone number) ---------- */
+.pair-form { margin-top: 14px; text-align: left; }
+
+.pair-form label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pair-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;               /* 16px stops phones zooming in on tap */
+  box-shadow: inset 3px 3px 6px var(--dark), inset -3px -3px 6px var(--light);
+}
+.pair-input:focus { outline: 2px solid var(--accent); }
+
+.pair-btn { width: 100%; margin-top: 12px; min-height: 46px; }
+.pair-btn:disabled { opacity: 0.6; cursor: wait; transform: none; box-shadow: none; }
+
+.pair-msg {
+  min-height: 20px;
+  margin-top: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+.pair-msg.error { color: #ef4444; }
+
+.pair-result { display: none; margin-top: 14px; text-align: center; }
+.pair-result.show { display: block; }
+
+.pair-code {
+  margin: 8px 0 10px;
+  padding: 14px 8px;
+  border-radius: 14px;
+  background: var(--card-inner);
+  color: var(--accent);
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: 3px;
+  word-break: break-all;
+  box-shadow: 4px 4px 10px var(--dark);
+}
+
+.pair-steps {
+  margin: 14px 0 0;
+  padding-left: 20px;
+  text-align: left;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.pair-note {
+  margin: 16px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.host-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+/* ---------- 9. FAQ ---------- */
+.faq-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+.faq-item h3 { margin: 0; font-size: 1.05rem; font-weight: 800; }
+.faq-item p { margin: 2px 0 0; font-size: 0.9rem; color: var(--muted); }
+
+/* ---------- 10. QUOTES ---------- */
+.quotes-card { padding: 22px 16px 30px; }
+
+blockquote {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+/* ---------- 11. CONTACT ---------- */
+.contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.contact-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 6px 6px;
+  border-radius: 999px;
+  background: var(--card-inner);
+  font-weight: 600;
+  box-shadow: 4px 4px 10px var(--dark);
+}
+.contact-pill .icon-circle {
+  width: 36px;
+  height: 36px;
+  color: #fff;
+  box-shadow: none;
+}
+
+.brand-wa { background: #25d366; }
+.brand-mail { background: #22c55e; }
+.brand-tt { background: #000; }
+.brand-wc { background: #128c7e; }
+.brand-gh { background: #24292f; }
+
+/* ---------- 12. FOOTER ---------- */
+.footer {
+  margin-top: 30px;
+  padding: 16px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+  background: rgba(100, 116, 139, 0.12);
+  border-top: 1px solid var(--border);
+}
+.footer p { margin: 0; }
+
+/* ---------- 13. SMALL PHONES ---------- */
+@media (max-width: 400px) {
+  .two-col { grid-template-columns: 1fr; }
+  .stat-number { font-size: 1.4rem; }
+  .section-title { font-size: 1.35rem; }
+  .bot-grid { gap: 8px; }
+  .pair-code { font-size: 1.5rem; letter-spacing: 2px; }
+}
+
+/* ---------- 14. SMALL HELPERS ---------- */
+.menu a.current {
+  background: var(--card-inner);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.knob.active .fa-moon { color: #6366f1; }
+
+/* ---------- 15. ABOUT OWNER (floating card) ---------- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+.modal.open { opacity: 1; visibility: visible; }
+
+.modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 28px 20px 20px;
+  border-radius: 22px;
+  background: var(--bg);
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  transform: translateY(24px) scale(0.96);
+  transition: transform 0.25s ease;
+}
+.modal.open .modal-card { transform: none; }
+
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--card-inner);
+  box-shadow: 2px 2px 6px var(--dark);
+}
+
+.owner-photo {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-size: 2.6rem;
+  color: var(--muted);
+  background: var(--card-inner);
+  border: 4px solid var(--accent);
+}
+.owner-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.owner-name { margin: 0; font-size: 1.5rem; font-weight: 800; }
+.owner-role { margin: 2px 0 10px; font-size: 0.9rem; font-weight: 600; color: var(--accent); }
+.owner-bio { margin: 0 0 12px; font-size: 0.9rem; line-height: 1.5; color: var(--muted); }
+
+.owner-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.owner-tags span {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--card-inner);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.owner-info { list-style: none; margin: 0 0 16px; padding: 0; text-align: left; }
+.owner-info li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+.owner-info i { width: 20px; text-align: center; color: var(--accent); }
+
+.cancel-btn { width: 100%; }
+
+  </style>
+</head>
+<body>
+
+  <h1 class="page-title">Welcome to Andy-Bots</h1>
+
+  <header class="topbar">
+    <button class="icon-btn" id="menuBtn" aria-label="Open menu">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+
+    <div class="brand">
+      <i class="fa-solid fa-robot"></i>
+      <span>ANDY-TECH</span>
+    </div>
+
+    <button class="theme-toggle" id="themeBtn" aria-label="Switch light or dark mode">
+      <span class="knob active"><i class="fa-solid fa-sun"></i></span>
+      <span class="knob"><i class="fa-solid fa-moon"></i></span>
+    </button>
+  </header>
+
+  <div class="overlay" id="overlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <i class="fa-solid fa-robot"></i>
+        <span>ANDY-TECH</span>
+      </div>
+      <button class="icon-btn" id="closeBtn" aria-label="Close menu">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <nav>
+      <ul class="menu">
+        <li><a href="#bots"><i class="fa-solid fa-robot"></i> Bots</a></li>
+        <li><a href="#stats"><i class="fa-solid fa-chart-simple"></i> Live Stats</a></li>
+        <li><a href="#features"><i class="fa-solid fa-circle-check"></i> Pro Features</a></li>
+        <li><a href="#how"><i class="fa-solid fa-gears"></i> How It Works</a></li>
+        <li><a href="#deploy"><i class="fa-solid fa-rocket"></i> Get Your Bot</a></li>
+        <li><a href="#faq"><i class="fa-solid fa-circle-question"></i> FAQ</a></li>
+        <li><a href="#quotes"><i class="fa-solid fa-quote-left"></i> Quotes</a></li>
+        <li><a href="#contact"><i class="fa-solid fa-envelope"></i> Contact</a></li>
+        <li class="menu-divider"></li>
+        <li>
+          <button type="button" id="aboutBtn">
+            <i class="fa-solid fa-user"></i> About Owner
+          </button>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="container">
+
+      <section id="bots" class="card">
+        <h2 class="section-title">Andy-Tech</h2>
+
+        <div class="bot-grid">
+
+          <article class="bot-card">
+            <span class="badge">Active</span>
+            <h3>ANDY-XMD</h3>
+            <img src="https://files.catbox.moe/ny2ajd.jpg" alt="ANDY-XMD banner">
+            <div class="btn-stack">
+              <a class="btn" href="https://www.github.com/Andytech580/ANDY-XMD/fork" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-code-fork"></i> Fork</a>
+              <a class="btn" href="https://www.github.com/Andytech580/ANDY-XMD" target="_blank" rel="noopener noreferrer">
+                <i class="fa-regular fa-star"></i> Star</a>
+              <a class="btn" href="https://www.github.com/Andytech580/ANDY-XMD/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-download"></i> Download</a>
+            </div>
+          </article>
+
+          <article class="bot-card">
+            <span class="badge">Active</span>
+            <h3>MINI BOT</h3>
+            <img src="https://files.catbox.moe/tekrp0.jpg" alt="Mini Bot banner">
+            <div class="btn-stack">
+              <a class="btn" href="https://www.github.com/Andytech580/ANDY-XMD-MINI/fork" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-code-fork"></i> Fork</a>
+              <a class="btn" href="https://www.github.com/Andytech580/ANDY-XMD-MINI" target="_blank" rel="noopener noreferrer">
+                <i class="fa-regular fa-star"></i> Star</a>
+              <a class="btn" href="https://www.github.com/Andytech580/ANDY-XMD-MINI/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-download"></i> Download</a>
+            </div>
+          </article>
+
+        </div>
+      </section>
+
+      <section id="stats" class="card">
+        <h2 class="section-title">Live Stats</h2>
+
+        <div class="stats-grid">
+
+          <div class="stat-card">
+            <div class="icon-circle"><i class="fa-solid fa-heart-pulse"></i></div>
+            <p class="stat-label">Bots Online</p>
+            <strong class="stat-number" id="botsOnline">12</strong>
+            <small class="muted">Now live</small>
+          </div>
+
+          <div class="stat-card">
+            <div class="icon-circle"><i class="fa-solid fa-users"></i></div>
+            <p class="stat-label">Total Users</p>
+            <strong class="stat-number" id="totalUsers">1,248</strong>
+            <small class="muted">+42 today</small>
+          </div>
+
+          <div class="stat-card">
+            <div class="icon-circle"><i class="fa-regular fa-clock"></i></div>
+            <p class="stat-label">Uptime</p>
+            <strong class="stat-number" id="uptime">99.9%</strong>
+            <small class="muted">Last over 30 days</small>
+          </div>
+
+        </div>
+      </section>
+
+      <div class="two-col">
+
+        <section id="features" class="card">
+          <h2 class="section-title">Pro Features</h2>
+          <ul class="feature-list">
+            <li><i class="fa-solid fa-circle-check"></i> Anti delete messages</li>
+            <li><i class="fa-solid fa-circle-check"></i> Auto status features</li>
+            <li><i class="fa-solid fa-circle-check"></i> Media download</li>
+            <li><i class="fa-solid fa-circle-check"></i> Group commands</li>
+            <li><i class="fa-solid fa-circle-check"></i> Always online</li>
+          </ul>
+        </section>
+
+        <section id="how" class="card">
+          <h2 class="section-title">How It Works</h2>
+          <ol class="steps">
+            <li>
+              <div class="icon-circle"><i class="fa-solid fa-code-fork"></i></div>
+              <div><strong>1. Fork</strong><p>Fork the repo to your account</p></div>
+            </li>
+            <li>
+              <div class="icon-circle"><i class="fa-solid fa-rocket"></i></div>
+              <div><strong>2. Deploy</strong><p>Deploy with one click to server</p></div>
+            </li>
+            <li>
+              <div class="icon-circle"><i class="fa-solid fa-link"></i></div>
+              <div><strong>3. Pair</strong><p>Pair your device &amp; run the bot</p></div>
+            </li>
+          </ol>
+        </section>
+
+      </div>
+
+      <section id="deploy" class="card">
+        <h2 class="section-title">Get Your Bot</h2>
+        <p class="muted">Enter your WhatsApp number to get a pairing code. Your bot goes live in about a minute.</p>
+
+        <div class="pair-form">
+          <label for="phone">WhatsApp number with country code, digits only</label>
+          <input class="pair-input" id="phone" type="tel" inputmode="numeric"
+                 placeholder="256700000000" autocomplete="tel">
+
+          <button class="btn btn-primary pair-btn" id="pairBtn" type="button">
+            <i class="fa-solid fa-link"></i> Get Pairing Code
+          </button>
+
+          <div class="pair-msg" id="pairMsg" role="status" aria-live="polite"></div>
+
+          <div class="pair-result" id="pairResult">
+            <div class="muted">Your pairing code</div>
+            <div class="pair-code" id="pairCode"></div>
+            <button class="btn" id="copyBtn" type="button">
+              <i class="fa-regular fa-copy"></i> Copy code
+            </button>
+
+            <ol class="pair-steps">
+              <li>Open WhatsApp on your phone</li>
+              <li>Go to Settings, then Linked Devices</li>
+              <li>Tap Link a device, then choose &ldquo;Link with phone number instead&rdquo;</li>
+              <li>Enter the code above. It expires in 2 minutes.</li>
+            </ol>
+          </div>
+        </div>
+
+        <p class="pair-note">
+          Linking gives the bot access to your WhatsApp account so it can read and answer commands.
+          You can remove it any time from Linked Devices in WhatsApp. Only link a number you own.
+        </p>
+
+        <a class="host-link" href="https://rl.katabump.fr/1c16e4" target="_blank" rel="noopener noreferrer">
+          Prefer to host it yourself? Deploy on Katabump
+        </a>
+      </section>
+
+      <section id="faq" class="card">
+        <h2 class="section-title">FAQ</h2>
+
+        <div class="faq-item">
+          <div class="icon-circle"><i class="fa-solid fa-question"></i></div>
+          <div>
+            <h3>Is it free?</h3>
+            <p>Yes &mdash; fully free and open source.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="icon-circle"><i class="fa-solid fa-question"></i></div>
+          <div>
+            <h3>How to deploy?</h3>
+            <p>Enter your number in the Get Your Bot section, then link with the pairing code in WhatsApp.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="icon-circle"><i class="fa-solid fa-question"></i></div>
+          <div>
+            <h3>Need help?</h3>
+            <p>Join our support via WhatsApp, our channel, or Email in the Contact section.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="quotes" class="card quotes-card">
+        <h2 class="section-title">Quotes</h2>
+        <blockquote>&ldquo;Keep building &mdash; even small progress is still progress.&rdquo;</blockquote>
+        <blockquote>&ldquo;Consistency beats intensity. Show up daily.&rdquo;</blockquote>
+        <blockquote>&ldquo;Code it. Break it. Fix it. Ship it.&rdquo;</blockquote>
+        <blockquote>&ldquo;Inspired by fear of being average &mdash; keep going.&rdquo;</blockquote>
+      </section>
+
+      <section id="contact" class="card">
+        <h2 class="section-title">Contact</h2>
+
+        <div class="contact-row">
+          <a class="contact-pill" href="https://wa.me/256701583113" target="_blank"
+             rel="noopener noreferrer">
+            <span class="icon-circle brand-wa"><i class="fa-brands fa-whatsapp"></i></span>
+            WhatsApp
+          </a>
+
+          <a class="contact-pill" href="https://whatsapp.com/channel/0029VbBhe8lCRs1fCxZ9OM3U"
+             target="_blank" rel="noopener noreferrer">
+            <span class="icon-circle brand-wc"><i class="fa-solid fa-bullhorn"></i></span>
+            WA Channel
+          </a>
+
+          <a class="contact-pill" href="mailto:andytech581@gmail.com">
+            <span class="icon-circle brand-mail"><i class="fa-solid fa-envelope"></i></span>
+            Email
+          </a>
+
+          <a class="contact-pill" href="https://github.com/Andytech580" target="_blank"
+             rel="noopener noreferrer">
+            <span class="icon-circle brand-gh"><i class="fa-brands fa-github"></i></span>
+            GitHub
+          </a>
+
+          <a class="contact-pill" href="https://www.tiktok.com/@anime_02_world" target="_blank"
+             rel="noopener noreferrer">
+            <span class="icon-circle brand-tt"><i class="fa-brands fa-tiktok"></i></span>
+            TikTok
+          </a>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>&copy; Andy-Tech @ 2026 &bull; ANDY-BOTS</p>
+  </footer>
+
+
+  <!-- ABOUT OWNER: floating card -->
+  <div class="modal" id="ownerModal" role="dialog" aria-modal="true" aria-labelledby="ownerName">
+    <div class="modal-card">
+
+      <button type="button" class="modal-close" id="ownerClose" aria-label="Close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <!-- 1) PUT YOUR PHOTO LINK in the src below -->
+      <div class="owner-photo">
+        <i class="fa-solid fa-user"></i>
+        <img src="https://files.catbox.moe/ldcdhx.jpg" onerror="this.style.display='none'">
+      </div>
+
+      <!-- 2) EDIT THE TEXT BELOW -->
+      <h2 class="owner-name" id="ownerName">Andy</h2>
+      <p class="owner-role">Founder &amp; Developer &mdash; Andy-Tech</p>
+
+      <p class="owner-bio">
+        Hi, I&rsquo;m Tumuhaise Andrew a student at Makerere Univeristy. I build bots and tools and share them free and open source
+        so anyone can deploy their own..
+      </p>
+
+      <div class="owner-tags">
+        <span>Bot Developer</span>
+        <span>Open Source</span>
+        <span>Web</span>
+      </div>
+
+      <ul class="owner-info">
+        <li><i class="fa-brands fa-github"></i>
+          <a href="https://github.com/Andytech580" target="_blank" rel="noopener noreferrer">Andytech580</a></li>
+        <li><i class="fa-brands fa-whatsapp"></i>
+          <a href="https://wa.me/256701583113" target="_blank" rel="noopener noreferrer">+256 701 583 113</a></li>
+        <li><i class="fa-solid fa-envelope"></i>
+          <a href="mailto:andytech581@gmail.com">andytech581@gmail.com</a></li>
+      </ul>
+
+      <button type="button" class="btn btn-primary cancel-btn" id="ownerCancel">
+        <i class="fa-solid fa-xmark"></i> Cancel
+      </button>
+
+    </div>
+  </div>
+
+  <script>
+// Andy-Bots  |  script.js
+// Needs these ids/classes from index.html: menuBtn, closeBtn, sidebar, overlay, .menu a,
+// themeBtn, .knob, botsOnline, totalUsers, phone, pairBtn, pairMsg, pairResult, pairCode,
+// copyBtn, section[id], aboutBtn, ownerModal, ownerClose, ownerCancel
+
+// ---------- 1. SIDE MENU ----------
+const menuBtn  = document.getElementById("menuBtn");
+const closeBtn = document.getElementById("closeBtn");
+const sidebar  = document.getElementById("sidebar");
+const overlay  = document.getElementById("overlay");
+const menuLinks = document.querySelectorAll(".menu a");
+
+function openMenu() {
+  sidebar.classList.add("open");
+  overlay.classList.add("open");
+  document.body.classList.add("menu-open");
+}
+
+function closeMenu() {
+  sidebar.classList.remove("open");
+  overlay.classList.remove("open");
+  document.body.classList.remove("menu-open");
+}
+
+menuBtn.addEventListener("click", openMenu);
+closeBtn.addEventListener("click", closeMenu);
+overlay.addEventListener("click", closeMenu);
+
+menuLinks.forEach(function (link) {
+  link.addEventListener("click", closeMenu);
+});
+
+document.addEventListener("keydown", function (event) {
+  if (event.key === "Escape") {
+    closeMenu();
+    closeOwner();
+  }
+});
+
+// ---------- 2. THEME TOGGLE ----------
+const themeBtn = document.getElementById("themeBtn");
+const knobs = themeBtn.querySelectorAll(".knob");   // [0] = sun, [1] = moon
+
+function applyTheme(mode) {
+  const isDark = mode === "dark";
+  document.body.classList.toggle("dark", isDark);
+  knobs[0].classList.toggle("active", !isDark);
+  knobs[1].classList.toggle("active", isDark);
+  try { localStorage.setItem("theme", mode); } catch (error) {}
+}
+
+let savedTheme = null;
+try { savedTheme = localStorage.getItem("theme"); } catch (error) {}
+
+if (!savedTheme) {
+  const phoneIsDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  savedTheme = phoneIsDark ? "dark" : "light";
+}
+applyTheme(savedTheme);
+
+themeBtn.addEventListener("click", function () {
+  const nowDark = document.body.classList.contains("dark");
+  applyTheme(nowDark ? "light" : "dark");
+});
+
+// ---------- 3. LIVE STATS ----------
+const botsEl  = document.getElementById("botsOnline");
+const usersEl = document.getElementById("totalUsers");
+
+let botsOnline = 12;
+let totalUsers = 1248;
+
+function showStats() {
+  botsEl.textContent  = botsOnline;
+  usersEl.textContent = totalUsers.toLocaleString("en-US");
+}
+
+function updateStats() {
+  totalUsers += Math.floor(Math.random() * 3);          // adds 0, 1 or 2
+  const change = Math.floor(Math.random() * 3) - 1;     // -1, 0 or +1
+  botsOnline = Math.min(14, Math.max(10, botsOnline + change));
+  showStats();
+}
+
+showStats();
+setInterval(updateStats, 5000);                         // every 5 seconds
+
+// ---------- 4. GET YOUR BOT (pairing code) ----------
+const phoneInput = document.getElementById("phone");
+const pairBtn    = document.getElementById("pairBtn");
+const pairMsg    = document.getElementById("pairMsg");
+const pairResult = document.getElementById("pairResult");
+const pairCode   = document.getElementById("pairCode");
+const copyBtn    = document.getElementById("copyBtn");
+
+function showMessage(text, isError) {
+  pairMsg.textContent = text;
+  pairMsg.classList.toggle("error", Boolean(isError));
+}
+
+async function requestCode() {
+  const number = phoneInput.value.replace(/\D/g, "");
+
+  showMessage("", false);
+  pairResult.classList.remove("show");
+
+  if (number.length < 8 || number.length > 15) {
+    showMessage("Enter a valid number with the country code.", true);
+    return;
+  }
+
+  pairBtn.disabled = true;
+  showMessage("Creating your code, please wait...", false);
+
+  try {
+    const response = await fetch("/api/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ number: number })
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.code) {
+      showMessage(data.error || "Something went wrong. Try again.", true);
     } else {
-        // In non-interactive environment, use ownerNumber from settings
-        return Promise.resolve(settings.ownerNumber || phoneNumber)
+      showMessage("", false);
+      pairCode.textContent = data.code;
+      copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy code';
+      pairResult.classList.add("show");
     }
+  } catch (error) {
+    showMessage("Could not reach the server. Try again in a moment.", true);
+  }
+
+  pairBtn.disabled = false;
 }
 
+pairBtn.addEventListener("click", requestCode);
 
-async function startXeonBotInc() {
-    try {
-        let { version, isLatest } = await fetchLatestBaileysVersion()
-        const { state, saveCreds } = await useMultiFileAuthState(`./session`)
-        const msgRetryCounterCache = new NodeCache()
+phoneInput.addEventListener("keydown", function (event) {
+  if (event.key === "Enter") requestCode();
+});
 
-        const XeonBotInc = makeWASocket({
-            version,
-            logger: pino({ level: 'silent' }),
-            printQRInTerminal: !pairingCode,
-            browser: ["Ubuntu", "Chrome", "20.0.04"],
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
-            },
-            markOnlineOnConnect: true,
-            generateHighQualityLinkPreview: true,
-            syncFullHistory: false,
-            getMessage: async (key) => {
-                let jid = jidNormalizedUser(key.remoteJid)
-                let msg = await store.loadMessage(jid, key.id)
-                return msg?.message || ""
-            },
-            msgRetryCounterCache,
-            defaultQueryTimeoutMs: 60000,
-            connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 10000,
-        })
+copyBtn.addEventListener("click", async function () {
+  try {
+    await navigator.clipboard.writeText(pairCode.textContent.replace(/-/g, ""));
+    copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+  } catch (error) {}
+});
 
-        // Save credentials when they update
-        XeonBotInc.ev.on('creds.update', saveCreds)
+// ---------- 5. CURRENT SECTION IN MENU ----------
+const sections = document.querySelectorAll("section[id]");
 
-    store.bind(XeonBotInc.ev)
-
-    // Message handling
-    XeonBotInc.ev.on('messages.upsert', async chatUpdate => {
-        try {
-            const mek = chatUpdate.messages[0]
-            if (!mek.message) return
-            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-            if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                await handleStatus(XeonBotInc, chatUpdate);
-                return;
-            }
-            // In private mode, only block non-group messages (allow groups for moderation)
-            // Note: XeonBotInc.public is not synced, so we check mode in main.js instead
-            // This check is kept for backward compatibility but mainly blocks DMs
-            if (!XeonBotInc.public && !mek.key.fromMe && chatUpdate.type === 'notify') {
-                const isGroup = mek.key?.remoteJid?.endsWith('@g.us')
-                if (!isGroup) return // Block DMs in private mode, but allow group messages
-            }
-            if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
-
-            // Clear message retry cache to prevent memory bloat
-            if (XeonBotInc?.msgRetryCounterCache) {
-                XeonBotInc.msgRetryCounterCache.clear()
-            }
-
-            try {
-                await handleMessages(XeonBotInc, chatUpdate, true)
-            } catch (err) {
-                console.error("Error in handleMessages:", err)
-                // Only try to send error message if we have a valid chatId
-                if (mek.key && mek.key.remoteJid) {
-                    await XeonBotInc.sendMessage(mek.key.remoteJid, {
-                        text: '❌ An error occurred while processing your message.',
-                        contextInfo: {
-                            forwardingScore: 1,
-                            isForwarded: true,
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363421568891511@newsletter',
-                                newsletterName: '𝐀𝐧𝐝𝐲-𝐱𝐦𝐝',
-                                serverMessageId: -1
-                            }
-                        }
-                    }).catch(console.error);
-                }
-            }
-        } catch (err) {
-            console.error("Error in messages.upsert:", err)
-        }
-    })
-
-    // Add these event handlers for better functionality
-    XeonBotInc.decodeJid = (jid) => {
-        if (!jid) return jid
-        if (/:\d+@/gi.test(jid)) {
-            let decode = jidDecode(jid) || {}
-            return decode.user && decode.server && decode.user + '@' + decode.server || jid
-        } else return jid
+const observer = new IntersectionObserver(function (entries) {
+  entries.forEach(function (entry) {
+    if (entry.isIntersecting) {
+      menuLinks.forEach(function (link) {
+        const isCurrent = link.getAttribute("href") === "#" + entry.target.id;
+        link.classList.toggle("current", isCurrent);
+      });
     }
+  });
+}, { rootMargin: "-40% 0px -55% 0px" });
 
-    XeonBotInc.ev.on('contacts.update', update => {
-        for (let contact of update) {
-            let id = XeonBotInc.decodeJid(contact.id)
-            if (store && store.contacts) store.contacts[id] = { id, name: contact.notify }
-        }
-    })
+sections.forEach(function (section) {
+  observer.observe(section);
+});
 
-    XeonBotInc.getName = (jid, withoutContact = false) => {
-        id = XeonBotInc.decodeJid(jid)
-        withoutContact = XeonBotInc.withoutContact || withoutContact
-        let v
-        if (id.endsWith("@g.us")) return new Promise(async (resolve) => {
-            v = store.contacts[id] || {}
-            if (!(v.name || v.subject)) v = XeonBotInc.groupMetadata(id) || {}
-            resolve(v.name || v.subject || PhoneNumber('+' + id.replace('@s.whatsapp.net', '')).getNumber('international'))
-        })
-        else v = id === '0@s.whatsapp.net' ? {
-            id,
-            name: 'WhatsApp'
-        } : id === XeonBotInc.decodeJid(XeonBotInc.user.id) ?
-            XeonBotInc.user :
-            (store.contacts[id] || {})
-        return (withoutContact ? '' : v.name) || v.subject || v.verifiedName || PhoneNumber('+' + jid.replace('@s.whatsapp.net', '')).getNumber('international')
-    }
+// ---------- 6. ABOUT OWNER (floating card) ----------
+const aboutBtn    = document.getElementById("aboutBtn");
+const ownerModal  = document.getElementById("ownerModal");
+const ownerClose  = document.getElementById("ownerClose");
+const ownerCancel = document.getElementById("ownerCancel");
 
-    XeonBotInc.public = true
-
-    XeonBotInc.serializeM = (m) => smsg(XeonBotInc, m, store)
-
-    // Handle pairing code
-    if (pairingCode && !XeonBotInc.authState.creds.registered) {
-        if (useMobile) throw new Error('Cannot use pairing code with mobile api')
-
-        let phoneNumber
-        if (!!global.phoneNumber) {
-            phoneNumber = global.phoneNumber
-        } else {
-            phoneNumber = await question(chalk.bgBlack(chalk.greenBright(`Please type your WhatsApp number 😍\nFormat: 256701583113 (without + or spaces) : `)))
-        }
-
-        // Clean the phone number - remove any non-digit characters
-        phoneNumber = phoneNumber.replace(/[^0-9]/g, '')
-
-        setTimeout(async () => {
-            try {
-                let code = await XeonBotInc.requestPairingCode(phoneNumber,"ANDYBOTS")
-                code = code?.match(/.{1,4}/g)?.join("-") || code
-                console.log(chalk.black(chalk.bgGreen(`Your Pairing Code : `)), chalk.black(chalk.white(code)))
-                console.log(chalk.yellow(`\nPlease enter this code in your WhatsApp app:\n1. Open WhatsApp\n2. Go to Settings > Linked Devices\n3. Tap "Link a Device"\n4. Enter the code shown above`))
-            } catch (error) {
-                console.error('Error requesting pairing code:', error)
-                console.log(chalk.red('Failed to get pairing code. Please check your phone number and try again.'))
-            }
-        }, 3000)
-    }
-
-    // Connection handling
-    XeonBotInc.ev.on('connection.update', async (s) => {
-        const { connection, lastDisconnect, qr } = s
-        
-        if (qr) {
-            console.log(chalk.yellow('📱 QR Code generated. Please scan with WhatsApp.'))
-        }
-        
-        if (connection === 'connecting') {
-            console.log(chalk.yellow('🔄 Connecting to WhatsApp...'))
-        }
-        
-        if (connection == "open") {
-            console.log(chalk.magenta(` `))
-            console.log(chalk.yellow(`🌿Connected to => ` + JSON.stringify(XeonBotInc.user, null, 2)))
-
-            try {
-                const botNumber = XeonBotInc.user.id.split(':')[0] + '@s.whatsapp.net';
-                await XeonBotInc.sendMessage(botNumber, {
-                    text: `🤖 Bot Connected Successfully!\n\n⏰ Time: ${new Date().toLocaleString()}\n✅ Status: Online and Ready!\n\n✅Make sure to join below channel`,
-                    contextInfo: {
-                        forwardingScore: 1,
-                        isForwarded: true,
-                        forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363421568891511@newsletter',
-                            newsletterName: '𝐀𝐧𝐝𝐲-𝐱𝐦𝐝',
-                            serverMessageId: -1
-                        }
-                    }
-                });
-            } catch (error) {
-                console.error('Error sending connection message:', error.message)
-            }
-
-            await delay(1999)
-            console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'ANDY-XMD'} ]`)}\n\n`))
-            console.log(chalk.cyan(`< ================================================== >`))
-            console.log(chalk.magenta(`\n${global.themeemoji || '•'} TIKTOK: 1%`))
-            console.log(chalk.magenta(`${global.themeemoji || '•'} GITHUB: andytech580`))
-            console.log(chalk.magenta(`${global.themeemoji || '•'} WA NUMBER: ${owner}`))
-            console.log(chalk.magenta(`${global.themeemoji || '•'} CREDIT: MR ANDY-TECH`))
-            console.log(chalk.green(`${global.themeemoji || '•'} 🤖 Bot Connected Successfully! ✅`))
-            console.log(chalk.blue(`Bot Version: ${settings.version}`))
-        }
-        
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
-            const statusCode = lastDisconnect?.error?.output?.statusCode
-            
-            console.log(chalk.red(`Connection closed due to ${lastDisconnect?.error}, reconnecting ${shouldReconnect}`))
-            
-            if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
-                try {
-                    rmSync('./session', { recursive: true, force: true })
-                    console.log(chalk.yellow('Session folder deleted. Please re-authenticate.'))
-                } catch (error) {
-                    console.error('Error deleting session:', error)
-                }
-                console.log(chalk.red('Session logged out. Please re-authenticate.'))
-            }
-            
-            if (shouldReconnect) {
-                console.log(chalk.yellow('Reconnecting...'))
-                await delay(5000)
-                startXeonBotInc()
-            }
-        }
-    })
-
-    // Track recently-notified callers to avoid spamming messages
-    const antiCallNotified = new Set();
-
-    // Anticall handler: block callers when enabled
-    XeonBotInc.ev.on('call', async (calls) => {
-        try {
-            const { readState: readAnticallState } = require('./commands/anticall');
-            const state = readAnticallState();
-            if (!state.enabled) return;
-            for (const call of calls) {
-                const callerJid = call.from || call.peerJid || call.chatId;
-                if (!callerJid) continue;
-                try {
-                    // First: attempt to reject the call if supported
-                    try {
-                        if (typeof XeonBotInc.rejectCall === 'function' && call.id) {
-                            await XeonBotInc.rejectCall(call.id, callerJid);
-                        } else if (typeof XeonBotInc.sendCallOfferAck === 'function' && call.id) {
-                            await XeonBotInc.sendCallOfferAck(call.id, callerJid, 'reject');
-                        }
-                    } catch {}
-
-                    // Notify the caller only once within a short window
-                    if (!antiCallNotified.has(callerJid)) {
-                        antiCallNotified.add(callerJid);
-                        setTimeout(() => antiCallNotified.delete(callerJid), 60000);
-                        await XeonBotInc.sendMessage(callerJid, { text: '📵 Anticall is enabled. Your call was rejected and you will be blocked.' });
-                    }
-                } catch {}
-                // Then: block after a short delay to ensure rejection and message are processed
-                setTimeout(async () => {
-                    try { await XeonBotInc.updateBlockStatus(callerJid, 'block'); } catch {}
-                }, 800);
-            }
-        } catch (e) {
-            // ignore
-        }
-    });
-
-    XeonBotInc.ev.on('group-participants.update', async (update) => {
-        await handleGroupParticipantUpdate(XeonBotInc, update);
-    });
-
-    XeonBotInc.ev.on('messages.upsert', async (m) => {
-        if (m.messages[0].key && m.messages[0].key.remoteJid === 'status@broadcast') {
-            await handleStatus(XeonBotInc, m);
-        }
-    });
-
-    XeonBotInc.ev.on('status.update', async (status) => {
-        await handleStatus(XeonBotInc, status);
-    });
-
-    XeonBotInc.ev.on('messages.reaction', async (status) => {
-        await handleStatus(XeonBotInc, status);
-    });
-
-    return XeonBotInc
-    } catch (error) {
-        console.error('Error in startXeonBotInc:', error)
-        await delay(5000)
-        startXeonBotInc()
-    }
+function openOwner() {
+  closeMenu();                                  // close the side menu first
+  ownerModal.classList.add("open");
+  document.body.classList.add("modal-open");
+  ownerCancel.focus();
 }
 
-
-// Start the bot with error handling
-startXeonBotInc().catch(error => {
-    console.error('Fatal error:', error)
-    process.exit(1)
-})
-process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err)
-})
-
-process.on('unhandledRejection', (err) => {
-    console.error('Unhandled Rejection:', err)
-})
-
-// Mini-bot platform (website pairing). If it fails to load, the main bot keeps running.
-try {
-    require('./minibot-server')
-} catch (e) {
-    console.error('[MINIBOT] failed to load:', e.message)
+function closeOwner() {
+  if (!ownerModal.classList.contains("open")) return;
+  ownerModal.classList.remove("open");
+  document.body.classList.remove("modal-open");
+  aboutBtn.focus();
 }
 
-let file = require.resolve(__filename)
-fs.watchFile(file, () => {
-    fs.unwatchFile(file)
-    console.log(chalk.redBright(`Update ${__filename}`))
-    delete require.cache[file]
-    require(file)
-})
+aboutBtn.addEventListener("click", openOwner);
+ownerClose.addEventListener("click", closeOwner);
+ownerCancel.addEventListener("click", closeOwner);
+
+ownerModal.addEventListener("click", function (event) {
+  if (event.target === ownerModal) closeOwner();   // tap the dark area outside the card
+});
+
+  </script>
+</body>
+</html>
