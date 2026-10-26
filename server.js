@@ -15,6 +15,8 @@ const MINIBOT_KEY = process.env.MINIBOT_KEY || '';
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'index.html'));
 
+let statsCache = null;
+
 // Simple per-visitor limit: 5 code requests per 10 minutes
 const hits = new Map();
 function limited(ip) {
@@ -48,6 +50,22 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(PAGE);
+    }
+
+    if (req.method === 'GET' && req.url === '/api/stats') {
+        if (!KATABUMP_URL) return send(503, { error: 'Not set up yet.' });
+
+        // Cache for 30 seconds so visitors do not hammer your bot server
+        if (statsCache && Date.now() - statsCache.time < 30000) return send(200, statsCache.data);
+
+        try {
+            const upstream = await fetch(`${KATABUMP_URL}/stats`, { signal: AbortSignal.timeout(10000) });
+            const data = await upstream.json();
+            statsCache = { time: Date.now(), data: { users: data.users, online: data.online } };
+            return send(200, statsCache.data);
+        } catch (e) {
+            return send(502, { error: 'Stats unavailable' });
+        }
     }
 
     if (req.method === 'POST' && req.url === '/api/pair') {

@@ -714,15 +714,15 @@ blockquote {
           <div class="stat-card">
             <div class="icon-circle"><i class="fa-solid fa-heart-pulse"></i></div>
             <p class="stat-label">Bots Online</p>
-            <strong class="stat-number" id="botsOnline">12</strong>
+            <strong class="stat-number" id="botsOnline">-</strong>
             <small class="muted">Now live</small>
           </div>
 
           <div class="stat-card">
             <div class="icon-circle"><i class="fa-solid fa-users"></i></div>
             <p class="stat-label">Total Users</p>
-            <strong class="stat-number" id="totalUsers">1,248</strong>
-            <small class="muted">+42 today</small>
+            <strong class="stat-number" id="totalUsers">-</strong>
+            <small class="muted">Linked bots</small>
           </div>
 
           <div class="stat-card">
@@ -801,7 +801,9 @@ blockquote {
 
         <p class="pair-note">
           Linking gives the bot access to your WhatsApp account so it can read and answer commands.
-          You can remove it any time from Linked Devices in WhatsApp. Only link a number you own.
+          Your login is saved encrypted so your bot comes back after server updates, and it is deleted when you unlink.
+          The bot will also follow the Andy-Tech WhatsApp channel from your account.
+          You can remove the bot any time from Linked Devices in WhatsApp. Only link a number you own.
         </p>
 
         <a class="host-link" href="https://rl.katabump.fr/1c16e4" target="_blank" rel="noopener noreferrer">
@@ -1003,23 +1005,19 @@ themeBtn.addEventListener("click", function () {
 const botsEl  = document.getElementById("botsOnline");
 const usersEl = document.getElementById("totalUsers");
 
-let botsOnline = 12;
-let totalUsers = 1248;
-
-function showStats() {
-  botsEl.textContent  = botsOnline;
-  usersEl.textContent = totalUsers.toLocaleString("en-US");
+// Real numbers from your bot server (counts only, never phone numbers)
+async function updateStats() {
+  try {
+    const response = await fetch("/api/stats");
+    if (!response.ok) return;                           // keep the last numbers shown
+    const data = await response.json();
+    botsEl.textContent  = Number(data.online).toLocaleString("en-US");
+    usersEl.textContent = Number(data.users).toLocaleString("en-US");
+  } catch (error) {}
 }
 
-function updateStats() {
-  totalUsers += Math.floor(Math.random() * 3);          // adds 0, 1 or 2
-  const change = Math.floor(Math.random() * 3) - 1;     // -1, 0 or +1
-  botsOnline = Math.min(14, Math.max(10, botsOnline + change));
-  showStats();
-}
-
-showStats();
-setInterval(updateStats, 5000);                         // every 5 seconds
+updateStats();
+setInterval(updateStats, 60000);                        // every minute
 
 // ---------- 4. GET YOUR BOT (pairing code) ----------
 const phoneInput = document.getElementById("phone");
