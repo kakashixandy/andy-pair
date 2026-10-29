@@ -1,17 +1,3 @@
-// Runs on Render. Serves the page and sends pairing requests to your bot servers.
-// The visitor never chooses a server. This file picks one automatically:
-//   1. It asks every server for its status (alive? full? already has this number?)
-//   2. A number that already has a bot is refused, so it never runs on two servers
-//   3. It uses the least busy server that has space, and falls back to the next one
-//      if that server is full or has a problem
-//
-// Environment variables on Render (name in the first box, value in the second):
-//   SERVER1_URL = http://145.239.69.111:20370     SERVER1_KEY = your key
-//   SERVER2_URL = http://NEW_IP:PORT              SERVER2_KEY = your key
-//   (SERVER3_URL / SERVER3_KEY ... up to SERVER5 work the same way)
-// With only server 1 set, everything works with one server.
-// The old names KATABUMP_URL and MINIBOT_KEY still work for server 1, so nothing breaks
-// while you switch over.
 
 const http = require('http');
 const fs = require('fs');
@@ -43,6 +29,7 @@ const SERVERS = loadServers();
 console.log(`Bot servers configured: ${SERVERS.length}`);
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'index.html'));
+const admin = require('./admin');
 
 // ---------- talking to a bot server ----------
 async function ask(server, endpoint, { method = 'GET', body, timeout = 8000 } = {}) {
@@ -105,6 +92,9 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(obj));
     };
+
+    // The admin dashboard (password protected) answers anything under /admin
+    if (await admin.handle(req, res, SERVERS)) return;
 
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
