@@ -29,7 +29,6 @@ const SERVERS = loadServers();
 console.log(`Bot servers configured: ${SERVERS.length}`);
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'index.html'));
-const admin = require('./admin');
 
 // ---------- talking to a bot server ----------
 async function ask(server, endpoint, { method = 'GET', body, timeout = 8000 } = {}) {
@@ -94,7 +93,6 @@ const server = http.createServer(async (req, res) => {
     };
 
     // The admin dashboard (password protected) answers anything under /admin
-    if (await admin.handle(req, res, SERVERS)) return;
 
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
