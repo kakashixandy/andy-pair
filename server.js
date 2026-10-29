@@ -1,3 +1,16 @@
+// Runs on Render. Serves the page and sends pairing requests to your bot servers.
+// The visitor never chooses a server. This file picks one automatically:
+//   1. It asks every server for its status (alive? full? already has this number?)
+//   2. A number that already has a bot is refused, so it never runs on two servers
+//   3. It uses the least busy server that has space, and falls back to the next one
+//      if that server is full or has a problem
+//
+// Environment variables on Render (name in the first box, value in the second):
+//   SERVER1_URL = http://145.239.69.111:20370     SERVER1_KEY = your key
+//   SERVER2_URL = http://NEW_IP:PORT              SERVER2_KEY = your key
+//   (SERVER3_URL / SERVER3_KEY ... up to SERVER5 work the same way)
+// With only server 1 set, everything works with one server.
+// The old names KATABUMP_URL and MINIBOT_KEY still work for server 1.
 
 const http = require('http');
 const fs = require('fs');
@@ -30,6 +43,11 @@ console.log(`Bot servers configured: ${SERVERS.length}`);
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'index.html'));
 
+// The last number of users each server reported. If a server is briefly down, its users are
+// still counted in the total (none of them online), instead of the total suddenly dropping.
+const lastKnown = new Map(); // server id -> { users, time }
+const KEEP_LAST_KNOWN_MS = 24 * 60 * 60 * 1000;
+
 // ---------- talking to a bot server ----------
 async function ask(server, endpoint, { method = 'GET', body, timeout = 8000 } = {}) {
     const res = await fetch(server.url + endpoint, {
@@ -51,7 +69,9 @@ async function allStatuses(number = '') {
     const results = await Promise.all(SERVERS.map(async (server) => {
         try {
             const r = await ask(server, `/status${query}`, { timeout: 6000 });
-            return r.status === 200 ? { server, ...r.data } : null;
+            if (r.status !== 200) return null;
+            lastKnown.set(server.id, { users: r.data.users || 0, time: Date.now() });
+            return { server, ...r.data };
         } catch {
             return null;
         }
@@ -92,26 +112,39 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify(obj));
     };
 
-    // The admin dashboard (password protected) answers anything under /admin
-
     if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(PAGE);
     }
 
-    // Live stats for the page: totals across all servers (counts only, never numbers)
+    // Live stats for the page: totals across ALL servers (counts only, never numbers).
+    //   users  = everyone linked on server 1 + server 2 + ...
+    //   online = bots connected right now on all servers
+    // "servers" shows each server's own part, so you can see where the numbers come from.
     if (req.method === 'GET' && req.url === '/api/stats') {
         if (!SERVERS.length) return send(503, { error: 'Not set up yet.' });
 
         if (statsCache && Date.now() - statsCache.time < 30000) return send(200, statsCache.data);
 
         const alive = await allStatuses();
-        if (!alive.length) return send(502, { error: 'Stats unavailable' });
+
+        const servers = SERVERS.map((s) => {
+            const a = alive.find((x) => x.server.id === s.id);
+            if (a) return { id: s.id, up: true, users: a.users || 0, online: a.online || 0 };
+
+            // Not answering: still count its last known users, but none of them are online
+            const old = lastKnown.get(s.id);
+            const fresh = old && Date.now() - old.time < KEEP_LAST_KNOWN_MS;
+            return { id: s.id, up: false, users: fresh ? old.users : 0, online: 0 };
+        });
+
+        if (!alive.length && !servers.some((s) => s.users)) return send(502, { error: 'Stats unavailable' });
 
         const data = {
-            users: alive.reduce((sum, s) => sum + (s.users || 0), 0),
-            online: alive.reduce((sum, s) => sum + (s.online || 0), 0),
-            available: alive.some((s) => !s.full)
+            users: servers.reduce((sum, s) => sum + s.users, 0),
+            online: servers.reduce((sum, s) => sum + s.online, 0),
+            available: alive.some((s) => !s.full),
+            servers
         };
         statsCache = { time: Date.now(), data };
         return send(200, data);
